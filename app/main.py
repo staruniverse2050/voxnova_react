@@ -137,6 +137,7 @@ async def instant_speech(
     payload = {
         "text": text.strip(),
         "format": "mp3",
+        "language": "es",
         "references": [{"audio": audio, "text": reference_text.strip()}],
     }
     try:
