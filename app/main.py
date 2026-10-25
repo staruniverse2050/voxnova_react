@@ -109,7 +109,7 @@ async def voices():
 @app.post("/api/speech")
 async def speech(body:SpeechRequest):
     k=fish_key()
-    payload={"text":body.text,"format":"mp3"}
+    payload={"text":"[Spanish, natural Latin American Spanish accent] " + body.text,"format":"mp3"}
     if body.voice_id:
         payload["reference_id"]=body.voice_id
     async with httpx.AsyncClient(timeout=240) as client:
@@ -135,7 +135,7 @@ async def instant_speech(
     validate(file)
     audio = await read_file(file)
     payload = {
-        "text": text,
+        "text": "[Spanish, natural Latin American Spanish accent] " + text,
         "format": "mp3",
         "references": [{"audio": audio, "text": reference_text.strip()}],
     }
@@ -253,7 +253,7 @@ async def replace(voice_id:Annotated[str,Form(min_length=3,max_length=128)],star
                     "Content-Type": "application/json",
                     "model": "s2.1-pro-free",
                 },
-                json={"text": replacement_text, "format": "mp3", "reference_id": voice_id},
+                json={"text": "[Spanish, natural Latin American Spanish accent] " + replacement_text, "format": "mp3", "reference_id": voice_id},
             )
         if r.is_error:
             raise upstream(r)
