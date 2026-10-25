@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: voxnova-ai
+    runtime: docker
+    plan: starter
+    healthCheckPath: /health
+    envVars:
+      - key: ELEVENLABS_API_KEY
+        sync: false
+      - key: MAX_UPLOAD_MB
+        value: "40"
