@@ -118,7 +118,7 @@ function App() {
         localStorage.setItem('voxnova_fish_voices', JSON.stringify(updated));
         setVoice(clonedVoiceId);
         setMode('speech');
-        setMessage('¡Voz "' + clonedName + '" guardada en este navegador! Ya puedes escribir tu texto en Texto a voz y generar el audio con esa voz.');
+        setMessage('¡Voz "' + clonedName + '" guardada en este navegador! Ya puedes escribir tu texto en Texto a voz en español y generar el audio con esa voz.');
       } else {
         const blob=await response.blob(); setAudioUrl(URL.createObjectURL(blob)); setMessage('Audio procesado correctamente. Escúchalo y descarga el resultado.');
       }
@@ -127,7 +127,7 @@ function App() {
   }
   const modes = [
     {id:'replace',label:'Editar un audio',desc:'Reemplaza una frase',icon:Scissors},
-    {id:'speech',label:'Texto a voz',desc:'Escribe y genera audio',icon:AudioLines},
+    {id:'speech',label:'Texto a voz',desc:'Genera audio en español',icon:AudioLines},
     {id:'convert',label:'Cambiar mi voz',desc:'Transforma una grabación',icon:RefreshCw},
     {id:'clone',label:'Clonar una voz',desc:'Guarda una voz propia',icon:Mic}
   ];
@@ -140,10 +140,10 @@ function App() {
         <form onSubmit={run} className="panel">
           <div className="panelhead"><div><span className="step">01</span><h2>{modes.find(m=>m.id===mode)?.label}</h2></div><span className="secure"><ShieldCheck size={15}/> Procesamiento seguro</span></div>
           {mode !== 'speech' && <label className="field"><span>Archivo de audio</span><label className="drop"><Upload size={22}/><b>{file?file.name:'Selecciona o arrastra un audio'}</b><small>MP3, WAV, M4A, OGG · Máximo 40 MB</small><input type="file" accept="audio/*,.mp3,.wav,.m4a,.ogg,.opus" onChange={selectFile}/></label></label>}
-          {mode === 'speech' && <div className="notice"><b>¿Quieres usar una voz de referencia sin crear un modelo?</b><p>Sube una grabación limpia de la voz. No se guardará como modelo; se usará solo para esta generación. Si no subes audio, puedes elegir una voz que ya tengas guardada.</p><label className="drop"><Upload size={22}/><b>{file?file.name:'Subir audio de referencia (opcional)'}</b><small>MP3, WAV, M4A u OGG · Máximo 40 MB</small><input type="file" accept="audio/*,.mp3,.wav,.m4a,.ogg,.opus" onChange={selectFile}/></label></div>}
-          {mode === 'speech' && file && <label className="field"><span>¿Qué dice exactamente el audio de referencia?</span><textarea value={referenceText} onChange={e=>setReferenceText(e.target.value)} required rows={2} placeholder="Escribe la transcripción del audio de referencia…"/></label>}
+          {mode === 'speech' && <div className="notice"><b>¿Quieres usar una voz de referencia sin crear un modelo?</b><p>Para obtener pronunciación en español, sube una grabación de referencia hablada en español y escribe el texto nuevo también en español. No se guardará como modelo; se usará solo para esta generación.</p><label className="drop"><Upload size={22}/><b>{file?file.name:'Subir audio de referencia (opcional)'}</b><small>MP3, WAV, M4A u OGG · Máximo 40 MB</small><input type="file" accept="audio/*,.mp3,.wav,.m4a,.ogg,.opus" onChange={selectFile}/></label></div>}
+          {mode === 'speech' && file && <label className="field"><span>Transcripción en español del audio de referencia</span><textarea value={referenceText} onChange={e=>setReferenceText(e.target.value)} required rows={2} placeholder="Escribe exactamente en español lo que se escucha en la grabación…"/></label>}
           {mode === 'clone' && <label className="field"><span>Nombre para esta voz</span><input value={name} onChange={e=>setName(e.target.value)} required placeholder="Ej. Mi voz"/></label>}
-          {mode !== 'clone' && <label className="field"><span>{mode==='speech'?'Texto que dirá la voz':mode==='replace'?'Nueva frase para el fragmento':'Voz de destino'}</span>{mode==='speech'||mode==='replace'?<textarea value={text} onChange={e=>setText(e.target.value)} required rows={4} placeholder={mode==='speech'?'Escribe aquí lo que quieres que diga la voz…':'Escribe la frase que reemplazará el fragmento…'}/>:<select value={voice} onChange={e=>setVoice(e.target.value)} required><option value="">Selecciona una voz</option>{voices.map(v=><option key={v.voice_id} value={v.voice_id}>{v.name} {v.category?'· '+v.category:''}</option>)}</select>}</label>}
+          {mode !== 'clone' && <label className="field"><span>{mode==='speech'?'Texto que dirá la voz':mode==='replace'?'Nueva frase para el fragmento':'Voz de destino'}</span>{mode==='speech'||mode==='replace'?<textarea value={text} onChange={e=>setText(e.target.value)} required rows={4} placeholder={mode==='speech'?'Escribe en español el texto que quieres que diga la voz…':'Escribe la frase que reemplazará el fragmento…'}/>:<select value={voice} onChange={e=>setVoice(e.target.value)} required><option value="">Selecciona una voz</option>{voices.map(v=><option key={v.voice_id} value={v.voice_id}>{v.name} {v.category?'· '+v.category:''}</option>)}</select>}</label>}
           {mode==='replace' && <div className="timings"><label className="field"><span>Inicio (segundos)</span><input type="number" min="0" step="0.1" value={start} onChange={e=>setStart(e.target.value)} required/></label><label className="field"><span>Fin (segundos)</span><input type="number" min="0.1" step="0.1" value={end} onChange={e=>setEnd(e.target.value)} required/></label></div>}
           {(mode==='replace'||(mode==='speech'&&!file)) && <label className="field"><span>{mode==='speech'?'Voz guardada (si no subes audio de referencia)':'Voz que se utilizará'}</span><select value={voice} onChange={e=>setVoice(e.target.value)} required={mode==='replace'||(mode==='speech'&&!file)}><option value="">Selecciona una voz</option>{voices.map(v=><option key={v.voice_id} value={v.voice_id}>{v.name} {v.category?'· '+v.category:''}</option>)}</select></label>}
           {(mode!=='speech'||(mode==='speech'&&file)) && <label className="consent"><input type="checkbox" checked={consent} onChange={e=>setConsent(e.target.checked)}/><span>Confirmo que tengo autorización para usar esta grabación y la voz seleccionada.</span></label>}
