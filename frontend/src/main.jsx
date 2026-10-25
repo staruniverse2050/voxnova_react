@@ -23,8 +23,6 @@ function App() {
   const [voice,setVoice] = useState('');
   const [file,setFile] = useState(null);
   const [name,setName] = useState('Mi voz');
-  const [importVoiceName,setImportVoiceName] = useState('');
-  const [importVoiceId,setImportVoiceId] = useState('');
   const [text,setText] = useState('');
   const [start,setStart] = useState('0');
   const [end,setEnd] = useState('3');
@@ -63,22 +61,6 @@ function App() {
   useEffect(()=>{ loadVoices(); },[]);
   useEffect(()=>()=>{ if(audioUrl) URL.revokeObjectURL(audioUrl); },[audioUrl]);
   function selectFile(e){ setFile(e.target.files?.[0] || null); setError(''); setMessage(''); }
-  function saveImportedVoice() {
-    const cleanName = importVoiceName.trim();
-    const cleanId = importVoiceId.trim();
-    if (!cleanName || !cleanId) { setError('Escribe el nombre y el identificador de tu voz guardada en Fish Audio.'); return; }
-    
-    const savedVoice = {voice_id:cleanId,name:cleanName,category:'Voz guardada en Fish Audio',provider:'Fish Audio'};
-    const updated = [savedVoice, ...customVoices.filter(v => v.voice_id !== cleanId)];
-    setCustomVoices(updated);
-    setVoices(prev => [savedVoice, ...prev.filter(v => v.voice_id !== cleanId)]);
-    localStorage.setItem('voxnova_fish_voices', JSON.stringify(updated));
-    setVoice(cleanId);
-    setImportVoiceName('');
-    setImportVoiceId('');
-    setError('');
-    setMessage('La voz "' + cleanName + '" ya aparece en Texto a voz en este navegador.');
-  }
   async function run(e) {
     e.preventDefault(); setBusy(true); setError(''); setMessage('');
     try {
@@ -150,7 +132,7 @@ function App() {
           {mode==='replace' && <div className="timings"><label className="field"><span>Inicio (segundos)</span><input type="number" min="0" step="0.1" value={start} onChange={e=>setStart(e.target.value)} required/></label><label className="field"><span>Fin (segundos)</span><input type="number" min="0.1" step="0.1" value={end} onChange={e=>setEnd(e.target.value)} required/></label></div>}
           {(mode==='speech'||mode==='replace') && <label className="field"><span>Voz que se utilizará</span><select value={voice} onChange={e=>setVoice(e.target.value)} required><option value="">Selecciona una voz</option>{voices.map(v=><option key={v.voice_id} value={v.voice_id}>{v.name} {v.category?'· '+v.category:''}</option>)}</select></label>}
           {mode!=='speech' && <label className="consent"><input type="checkbox" checked={consent} onChange={e=>setConsent(e.target.checked)}/><span>Confirmo que tengo autorización para usar esta grabación y la voz seleccionada.</span></label>}
-          {mode==='speech' && <div className="notice"><b>¿Ya tienes una voz guardada en Fish Audio?</b><p>Las voces de tu cuenta se cargan automáticamente. También puedes importar un ID de modelo de voz.</p><label className="field"><span>Nombre de la voz guardada</span><input value={importVoiceName} onChange={e=>setImportVoiceName(e.target.value)} placeholder="Ej. David"/></label><label className="field"><span>Identificador del modelo de voz de Fish Audio</span><input value={importVoiceId} onChange={e=>setImportVoiceId(e.target.value)} placeholder="ID del modelo" /></label><button type="button" className="download" onClick={saveImportedVoice}>Guardar voz en VoxNova</button></div>}
+          {mode==='speech' && voices.length===0 && <div className="notice"><b>Todavía no hay voces disponibles</b><p>Primero crea una voz en la sección “Clonar una voz”. Cuando se guarde correctamente, aparecerá aquí para generar audio.</p><button type="button" className="download" onClick={()=>loadVoices()}>Actualizar lista de voces</button></div>}
           {!apiReady && <div className="notice">Configura <code>FISH_API_KEY</code> en Render con tu llave API de Fish Audio para clonar voces, generar texto a voz y reemplazar fragmentos.</div>}
           {mode==='convert' && !elevenLabsReady && <div className="notice">La función Cambiar mi voz usa ElevenLabs y requiere <code>ELEVENLABS_API_KEY</code> en Render. Las otras funciones principales usan Fish Audio.</div>}
           {error && <div className="alert">{error}</div>}{message && <div className="success">{message}</div>}
