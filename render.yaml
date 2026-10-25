@@ -5,7 +5,7 @@ services:
     plan: starter
     healthCheckPath: /health
     envVars:
-      - key: REPLICAVOX_API_KEY
+      - key: FISH_API_KEY
         sync: false
       - key: ELEVENLABS_API_KEY
         sync: false
