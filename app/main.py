@@ -67,9 +67,33 @@ async def speech(body:SpeechRequest):
 async def clone(name:Annotated[str,Form(min_length=1,max_length=80)],consent_confirmed:Annotated[bool,Form()],file:Annotated[UploadFile,File()]):
     k=key()
     if not consent_confirmed: raise HTTPException(400,"Confirma que tienes permiso para clonar esta voz.")
-    validate(file); data=await read_file(file)
-    async with httpx.AsyncClient(timeout=180) as c:
-        r=await c.post(API+"/voices/add",headers={"xi-api-key":k},data={"name":name,"description":"Voice sample uploaded with user permission"},files={"files":(file.filename or "sample.wav",data,file.content_type or "application/octet-stream")})
+    validate(file)
+    data=await read_file(file)
+    # Normalize WhatsApp and mobile recordings (OGG/OPUS/M4A/WAV) to a provider-friendly MP3.
+    with tempfile.TemporaryDirectory(prefix="voxnova-clone-") as td:
+        src=Path(td)/"source"
+        normalized=Path(td)/"voice-sample.mp3"
+        src.write_bytes(data)
+        try:
+            result=subprocess.run(
+                ["ffmpeg","-hide_banner","-loglevel","error","-y","-i",str(src),"-vn","-ac","1","-ar","44100","-codec:a","libmp3lame","-b:a","128k",str(normalized)],
+                capture_output=True,text=True,timeout=180
+            )
+        except FileNotFoundError:
+            raise HTTPException(503,"FFmpeg no está instalado en el servidor.")
+        except subprocess.TimeoutExpired:
+            raise HTTPException(504,"La conversión del audio tardó demasiado. Prueba con un audio más corto.")
+        if result.returncode != 0 or not normalized.exists() or normalized.stat().st_size == 0:
+            detail=(result.stderr or "").strip()
+            raise HTTPException(422,"No se pudo leer o convertir este audio. Prueba con un MP3 o WAV válido." + ((" Detalle: "+detail[-300:]) if detail else ""))
+        normalized_data=normalized.read_bytes()
+        async with httpx.AsyncClient(timeout=180) as client:
+            r=await client.post(
+                API+"/voices/add",
+                headers={"xi-api-key":k},
+                data={"name":name.strip(),"description":"Voice sample uploaded with user permission"},
+                files={"files":("voice-sample.mp3",normalized_data,"audio/mpeg")}
+            )
     if r.is_error: raise upstream(r)
     return r.json()
 
