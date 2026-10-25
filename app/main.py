@@ -9,9 +9,9 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 API_KEY = os.getenv("ELEVENLABS_API_KEY", "").strip()
-REPLICAVOX_API_KEY = os.getenv("REPLICAVOX_API_KEY", "").strip()
+JSF_API_KEY = os.getenv("JSF_LABS_API_KEY", "").strip()
 API = "https://api.elevenlabs.io/v1"
-REPLICAVOX_API = "https://api.replicavox.com/v1"
+JSF_API = "https://www.jsflabs.io/api/v1"
 MAX_MB = int(os.getenv("MAX_UPLOAD_MB", "40"))
 app = FastAPI(title="VoxNova AI", version="1.1.0")
 
@@ -20,10 +20,10 @@ class SpeechRequest(BaseModel):
     text: str = Field(min_length=1, max_length=5000)
     model_id: str = "eleven_multilingual_v2"
 
-def replicavox_key():
-    if not REPLICAVOX_API_KEY:
-        raise HTTPException(503, "Configura REPLICAVOX_API_KEY en Render con la clave de tu cuenta gratuita de Replicavox.")
-    return REPLICAVOX_API_KEY
+def jsf_key():
+    if not JSF_API_KEY:
+        raise HTTPException(503, "Configura JSF_LABS_API_KEY en Render con tu llave API de JSF Labs.")
+    return JSF_API_KEY
 
 def key():
     if not API_KEY:
@@ -56,33 +56,31 @@ async def post_audio(url, headers, **kwargs):
     return Response(r.content,media_type="audio/mpeg",headers={"Content-Disposition":'attachment; filename="voxnova-audio.mp3"',"Cache-Control":"no-store"})
 
 @app.get("/health")
-def health(): return {"status":"ok","provider_configured":bool(REPLICAVOX_API_KEY),"elevenlabs_configured":bool(API_KEY),"replicavox_configured":bool(REPLICAVOX_API_KEY)}
+def health(): return {"status":"ok","provider_configured":bool(JSF_API_KEY),"elevenlabs_configured":bool(API_KEY),"jsf_configured":bool(JSF_API_KEY)}
 
 @app.get("/api/voices")
 async def voices():
-    k=replicavox_key()
-    async with httpx.AsyncClient(timeout=30) as client:
-        built=await client.get(REPLICAVOX_API+"/audio/voices",headers={"Authorization":"Bearer "+k})
-        clones=await client.get(REPLICAVOX_API+"/audio/clones",headers={"Authorization":"Bearer "+k})
-    if built.is_error: raise upstream(built)
-    if clones.is_error: raise upstream(clones)
-    built_data=built.json().get("data",[])
-    clone_data=clones.json().get("data",[])
-    normalized=[{"voice_id":v.get("id"),"name":v.get("name"),"category":"Biblioteca","preview_url":v.get("preview_url")} for v in built_data]
-    normalized += [{"voice_id":v.get("id"),"name":v.get("name"),"category":"Voz clonada","preview_url":v.get("preview_url")} for v in clone_data]
-    return {"voices":normalized}
+    # JSF Labs documents clone and TTS endpoints but does not document a list-voices endpoint.
+    # User-saved JSF voice IDs are imported and persisted in the browser.
+    return {"voices":[]}
 
 @app.post("/api/speech")
 async def speech(body:SpeechRequest):
-    k=replicavox_key()
+    k=jsf_key()
     async with httpx.AsyncClient(timeout=240) as client:
-        r=await client.post(REPLICAVOX_API+"/audio/speech",headers={"Authorization":"Bearer "+k,"Accept":"audio/mpeg","Content-Type":"application/json"},json={"model":"replicavox-expressive-v2","voice":body.voice_id,"input":body.text,"response_format":"mp3"})
-    if r.is_error: raise upstream(r)
-    return Response(r.content,media_type="audio/mpeg",headers={"Content-Disposition":'attachment; filename="voxnova-audio.mp3"',"Cache-Control":"no-store"})
+        r=await client.post(JSF_API+"/text-to-speech",headers={"x-api-key":k,"Accept":"application/json","Content-Type":"application/json"},json={"text":body.text,"voice_id":body.voice_id,"speed":1})
+        if r.is_error: raise upstream(r)
+        payload=r.json()
+        data=payload.get("data",{})
+        audio_url=data.get("audio_url")
+        if not audio_url: raise HTTPException(502,"JSF Labs no devolvió el enlace del audio.")
+        audio=await client.get(audio_url)
+    if audio.is_error: raise HTTPException(502,"No se pudo descargar el audio generado por JSF Labs.")
+    return Response(audio.content,media_type="audio/wav",headers={"Content-Disposition":'attachment; filename="voxnova-audio.wav"',"Cache-Control":"no-store"})
 
 @app.post("/api/voices/clone")
 async def clone(name:Annotated[str,Form(min_length=1,max_length=80)],consent_confirmed:Annotated[bool,Form()],file:Annotated[UploadFile,File()]):
-    k=replicavox_key()
+    k=jsf_key()
     if not consent_confirmed: raise HTTPException(400,"Confirma que tienes permiso para clonar esta voz.")
     validate(file)
     data=await read_file(file)
@@ -106,17 +104,17 @@ async def clone(name:Annotated[str,Form(min_length=1,max_length=80)],consent_con
         normalized_data=normalized.read_bytes()
         async with httpx.AsyncClient(timeout=240) as client:
             r=await client.post(
-                REPLICAVOX_API+"/audio/clones",
-                headers={"Authorization":"Bearer "+k},
-                data={"name":name.strip(),"language":"es","description":"Voz subida por el usuario con autorización","visibility":"public"},
-                files={"file":("voice-sample.mp3",normalized_data,"audio/mpeg")}
+                JSF_API+"/voice-clone",
+                headers={"x-api-key":k},
+                data={"name":name.strip(),"language":"es","gender":"Unspecified"},
+                files={"audio":("voice-sample.mp3",normalized_data,"audio/mpeg")}
             )
     if r.is_error: raise upstream(r)
     payload=r.json()
-    data=payload.get("data",payload)
-    voice_id=data.get("id") or data.get("voice_id")
-    if not voice_id: raise HTTPException(502,"Replicavox no devolvió el identificador de la voz clonada.")
-    return {"voice_id":voice_id,"name":data.get("name") or name.strip(),"provider":"Replicavox","language":data.get("language","es")}
+    data=payload.get("data",{})
+    voice_id=data.get("voiceId") or data.get("voice_id")
+    if not voice_id: raise HTTPException(502,"JSF Labs no devolvió el identificador de la voz clonada.")
+    return {"voice_id":voice_id,"name":data.get("name") or name.strip(),"provider":"JSF Labs","language":data.get("language","es")}
 
 @app.post("/api/convert-voice")
 async def convert(voice_id:Annotated[str,Form(min_length=3,max_length=128)],consent_confirmed:Annotated[bool,Form()],file:Annotated[UploadFile,File()]):
