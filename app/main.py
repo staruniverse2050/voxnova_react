@@ -9,9 +9,9 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 API_KEY = os.getenv("ELEVENLABS_API_KEY", "").strip()
-REPLICAVOX_API_KEY = os.getenv("REPLICAVOX_API_KEY", "").strip()
+FISH_API_KEY = os.getenv("FISH_API_KEY", "").strip()
 API = "https://api.elevenlabs.io/v1"
-REPLICAVOX_API = "https://api.replicavox.com/v1"
+FISH_API = "https://api.fish.audio"
 MAX_MB = int(os.getenv("MAX_UPLOAD_MB", "40"))
 app = FastAPI(title="VoxNova AI", version="1.1.0")
 
@@ -20,10 +20,10 @@ class SpeechRequest(BaseModel):
     text: str = Field(min_length=1, max_length=5000)
     model_id: str = "eleven_multilingual_v2"
 
-def replicavox_key():
-    if not REPLICAVOX_API_KEY:
-        raise HTTPException(503, "Configura REPLICAVOX_API_KEY en Render con tu llave API de Replicavox.")
-    return REPLICAVOX_API_KEY
+def fish_key():
+    if not FISH_API_KEY:
+        raise HTTPException(503, "Configura FISH_API_KEY en Render con tu llave API de Fish Audio.")
+    return FISH_API_KEY
 
 def key():
     if not API_KEY:
@@ -59,63 +59,65 @@ async def post_audio(url, headers, **kwargs):
     return Response(r.content,media_type="audio/mpeg",headers={"Content-Disposition":'attachment; filename="voxnova-audio.mp3"',"Cache-Control":"no-store"})
 
 @app.get("/health")
-def health(): return {"status":"ok","provider_configured":bool(REPLICAVOX_API_KEY),"elevenlabs_configured":bool(API_KEY),"replicavox_configured":bool(REPLICAVOX_API_KEY)}
+def health(): return {"status":"ok","provider_configured":bool(FISH_API_KEY),"elevenlabs_configured":bool(API_KEY),"fish_configured":bool(FISH_API_KEY)}
 
 @app.get("/api/voices")
 async def voices():
-    k=replicavox_key()
+    k=fish_key()
     headers={"Authorization":"Bearer "+k,"Accept":"application/json"}
     async with httpx.AsyncClient(timeout=60) as client:
-        library=await client.get(REPLICAVOX_API+"/audio/voices",headers=headers)
-        if library.is_error: raise upstream(library)
-        clones=await client.get(REPLICAVOX_API+"/audio/clones",headers=headers)
-        if clones.is_error: raise upstream(clones)
-    library_data=library.json()
-    clone_data=clones.json()
-    library_list=library_data if isinstance(library_data,list) else library_data.get("data",[])
-    clone_list=clone_data if isinstance(clone_data,list) else clone_data.get("data",[])
+        r=await client.get(FISH_API+"/model",headers=headers)
+    if r.is_error: raise upstream(r)
+    payload=r.json()
+    if isinstance(payload,list):
+        items=payload
+    elif isinstance(payload,dict):
+        items=payload.get("data") or payload.get("items") or payload.get("models") or payload.get("results") or []
+    else:
+        items=[]
     result=[]
-    for v in library_list:
-        voice_id=v.get("id") or v.get("voice_id")
-        if voice_id:
-            result.append({"voice_id":voice_id,"name":v.get("name") or voice_id,"category":"Voz de biblioteca","provider":"Replicavox"})
-    for v in clone_list:
-        voice_id=v.get("id") or v.get("voice_id")
-        if voice_id and v.get("status","ready")=="ready":
-            result.append({"voice_id":voice_id,"name":v.get("name") or voice_id,"category":"Voz clonada","provider":"Replicavox","visibility":v.get("visibility")})
+    for v in items:
+        if not isinstance(v,dict): continue
+        voice_id=v.get("id") or v.get("_id") or v.get("model_id")
+        state=v.get("state","trained")
+        if voice_id and state not in ("failed","training","created"):
+            result.append({"voice_id":voice_id,"name":v.get("title") or v.get("name") or voice_id,"category":"Voz de Fish Audio","provider":"Fish Audio"})
     return {"voices":result}
 
 @app.post("/api/speech")
 async def speech(body:SpeechRequest):
-    k=replicavox_key()
+    k=fish_key()
+    payload={"text":body.text,"format":"mp3"}
+    if body.voice_id:
+        payload["reference_id"]=body.voice_id
     async with httpx.AsyncClient(timeout=240) as client:
         r=await client.post(
-            REPLICAVOX_API+"/audio/speech",
-            headers={"Authorization":"Bearer "+k,"Accept":"audio/mpeg","Content-Type":"application/json"},
-            json={"model":"replicavox-expressive-v2","voice":body.voice_id,"input":body.text,"language":"es","response_format":"mp3"}
+            FISH_API+"/v1/tts",
+            headers={"Authorization":"Bearer "+k,"Accept":"audio/mpeg","Content-Type":"application/json","model":"s2.1-pro-free"},
+            json=payload
         )
     if r.is_error: raise upstream(r)
     return Response(r.content,media_type=r.headers.get("content-type","audio/mpeg"),headers={"Content-Disposition":'attachment; filename="voxnova-audio.mp3"',"Cache-Control":"no-store"})
 
 @app.post("/api/voices/clone")
 async def clone(name:Annotated[str,Form(min_length=1,max_length=80)],consent_confirmed:Annotated[bool,Form()],file:Annotated[UploadFile,File()]):
-    k=replicavox_key()
+    k=fish_key()
     if not consent_confirmed: raise HTTPException(400,"Confirma que tienes permiso para clonar esta voz.")
     validate(file)
     data=await read_file(file)
     headers={"Authorization":"Bearer "+k,"Accept":"application/json"}
     async with httpx.AsyncClient(timeout=240) as client:
         r=await client.post(
-            REPLICAVOX_API+"/audio/clones",
+            FISH_API+"/model",
             headers=headers,
-            data={"name":name.strip(),"language":"es"},
-            files={"file":(file.filename or "voice-sample",data,file.content_type or "application/octet-stream")}
+            data=[("title",name.strip()),("type","tts"),("train_mode","fast"),("visibility","private"),("description","Voz creada desde VoxNova AI")],
+            files=[("voices",(file.filename or "voice-sample",data,file.content_type or "application/octet-stream"))]
         )
     if r.is_error: raise upstream(r)
     payload=r.json()
-    voice_id=payload.get("id") or payload.get("voice_id")
-    if not voice_id: raise HTTPException(502,"Replicavox no devolvió el identificador de la voz clonada.")
-    return {"voice_id":voice_id,"name":payload.get("name") or name.strip(),"provider":"Replicavox","language":payload.get("language","es"),"status":payload.get("status","ready")}
+    voice_id=payload.get("id") or payload.get("_id") or payload.get("model_id")
+    if not voice_id: raise HTTPException(502,"Fish Audio no devolvió el identificador del modelo de voz.")
+    return {"voice_id":voice_id,"name":payload.get("title") or name.strip(),"provider":"Fish Audio","language":"multilingual","status":payload.get("state","created")}
 
 @app.post("/api/convert-voice")
 async def convert(voice_id:Annotated[str,Form(min_length=3,max_length=128)],consent_confirmed:Annotated[bool,Form()],file:Annotated[UploadFile,File()]):
