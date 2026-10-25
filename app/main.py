@@ -138,6 +138,9 @@ async def instant_speech(
         "text": text.strip(),
         "format": "mp3",
         "references": [{"audio": audio, "text": reference_text.strip()}],
+        "temperature": 0.4,
+        "top_p": 0.7,
+        "chunk_length": 200,
     }
     try:
         async with httpx.AsyncClient(timeout=240) as client:
