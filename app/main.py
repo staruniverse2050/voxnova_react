@@ -3,6 +3,7 @@ import os, subprocess, tempfile
 from pathlib import Path
 from typing import Annotated
 import httpx
+import msgpack
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
@@ -16,7 +17,7 @@ MAX_MB = int(os.getenv("MAX_UPLOAD_MB", "40"))
 app = FastAPI(title="VoxNova AI", version="1.1.0")
 
 class SpeechRequest(BaseModel):
-    voice_id: str = Field(min_length=3, max_length=128)
+    voice_id: str = Field(default="", max_length=128)
     text: str = Field(min_length=1, max_length=5000)
     model_id: str = "eleven_multilingual_v2"
 
@@ -119,6 +120,48 @@ async def speech(body:SpeechRequest):
         )
     if r.is_error: raise upstream(r)
     return Response(r.content,media_type=r.headers.get("content-type","audio/mpeg"),headers={"Content-Disposition":'attachment; filename="voxnova-audio.mp3"',"Cache-Control":"no-store"})
+
+@app.post("/api/instant-speech")
+async def instant_speech(
+    text: Annotated[str, Form(min_length=1, max_length=5000)],
+    reference_text: Annotated[str, Form(min_length=1, max_length=2000)],
+    consent_confirmed: Annotated[bool, Form()],
+    file: Annotated[UploadFile, File()],
+):
+    """Generate speech using an uploaded reference clip without creating a saved model."""
+    k = fish_key()
+    if not consent_confirmed:
+        raise HTTPException(400, "Confirma que tienes permiso para utilizar esta voz.")
+    validate(file)
+    audio = await read_file(file)
+    payload = {
+        "text": text,
+        "format": "mp3",
+        "references": [{"audio": audio, "text": reference_text.strip()}],
+    }
+    try:
+        async with httpx.AsyncClient(timeout=240) as client:
+            r = await client.post(
+                FISH_API + "/v1/tts",
+                headers={
+                    "Authorization": "Bearer " + k,
+                    "Accept": "audio/mpeg",
+                    "Content-Type": "application/msgpack",
+                    "model": "s2.1-pro-free",
+                },
+                content=msgpack.packb(payload, use_bin_type=True),
+            )
+    except httpx.TimeoutException:
+        raise HTTPException(504, "La generación tardó demasiado. Prueba con un audio de referencia más corto.")
+    except httpx.RequestError:
+        raise HTTPException(502, "No fue posible conectar con Fish Audio. Inténtalo de nuevo.")
+    if r.is_error:
+        raise upstream(r)
+    return Response(
+        r.content,
+        media_type=r.headers.get("content-type", "audio/mpeg"),
+        headers={"Content-Disposition": 'attachment; filename="voxnova-audio.mp3"', "Cache-Control": "no-store"},
+    )
 
 @app.post("/api/voices/clone")
 async def clone(name:Annotated[str,Form(min_length=1,max_length=80)],consent_confirmed:Annotated[bool,Form()],file:Annotated[UploadFile,File()]):
