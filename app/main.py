@@ -44,10 +44,13 @@ async def read_file(file: UploadFile):
 
 def upstream(r):
     try:
-        j=r.json(); detail=j.get("detail",j.get("message",j))
+        j=r.json()
+        detail=j.get("detail",j.get("message",j.get("error",j)))
+        if isinstance(detail,dict):
+            detail=detail.get("message",detail.get("detail",detail))
     except Exception: detail=r.text[:800]
     status=r.status_code if 400<=r.status_code<500 else 502
-    return HTTPException(status, detail={"provider":"ElevenLabs","message":detail})
+    return HTTPException(status, detail={"provider":"voice API","message":detail})
 
 async def post_audio(url, headers, **kwargs):
     async with httpx.AsyncClient(timeout=180) as client:
