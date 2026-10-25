@@ -109,7 +109,7 @@ async def voices():
 @app.post("/api/speech")
 async def speech(body:SpeechRequest):
     k=fish_key()
-    payload={"text": body.text.strip(), "format":"mp3"}
+    payload={"text": body.text.strip(), "format":"mp3", "language": "es"}
     if body.voice_id:
         payload["reference_id"]=body.voice_id
     async with httpx.AsyncClient(timeout=240) as client:
@@ -137,6 +137,7 @@ async def instant_speech(
     payload = {
         "text": text.strip(),
         "format": "mp3",
+        "language": "es",
         "references": [{"audio": audio, "text": reference_text.strip()}],
     }
     try:
@@ -253,7 +254,7 @@ async def replace(voice_id:Annotated[str,Form(min_length=3,max_length=128)],star
                     "Content-Type": "application/json",
                     "model": "s2.1-pro-free",
                 },
-                json={"text": replacement_text.strip(), "format": "mp3", "reference_id": voice_id},
+                json={"text": replacement_text.strip(), "format": "mp3", "reference_id": voice_id, "language": "es"},
             )
         if r.is_error:
             raise upstream(r)
