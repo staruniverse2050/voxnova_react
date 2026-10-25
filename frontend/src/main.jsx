@@ -96,11 +96,17 @@ function App() {
       }
       if(!response) throw new Error('Selecciona una operación válida.');
       if(!response.ok) {
-        let detail = 'No se pudo completar esta acción. Vuelve a intentarlo.';
-        try {
-          const d = await response.json();
-          detail = readableError(d.detail || d.message || d.error || d);
-        } catch {}
+        let detail = 'No se pudo completar esta acción (HTTP ' + response.status + ').';
+        const raw = await response.text().catch(() => '');
+        if (raw) {
+          try {
+            const d = JSON.parse(raw);
+            detail = readableError(d.detail || d.message || d.error || d);
+          } catch {
+            const clean = raw.replace(/<[^>]*>/g, ' ').replace(/\\s+/g, ' ').trim();
+            if (clean) detail = clean.slice(0, 500);
+          }
+        }
         throw new Error(detail);
       }
       if(mode === 'clone') {
