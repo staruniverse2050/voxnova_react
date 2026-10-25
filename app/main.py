@@ -190,7 +190,7 @@ def ffmpeg(args):
 
 @app.post("/api/replace-segment")
 async def replace(voice_id:Annotated[str,Form(min_length=3,max_length=128)],start_seconds:Annotated[float,Form(ge=0)],end_seconds:Annotated[float,Form(gt=0)],replacement_text:Annotated[str,Form(min_length=1,max_length=2000)],consent_confirmed:Annotated[bool,Form()],file:Annotated[UploadFile,File()]):
-    k=key()
+    k=fish_key()
     if not consent_confirmed: raise HTTPException(400,"Confirma que tienes autorización para editar este audio.")
     if end_seconds<=start_seconds or end_seconds-start_seconds>120: raise HTTPException(400,"El tiempo final debe superar al inicial y el fragmento no puede superar 120 segundos.")
     validate(file); raw=await read_file(file)
@@ -201,9 +201,19 @@ async def replace(voice_id:Annotated[str,Form(min_length=3,max_length=128)],star
         try: duration=float(p.stdout.strip())
         except ValueError: raise HTTPException(422,"No se pudo leer la duración del audio.")
         if start_seconds>=duration or end_seconds>duration: raise HTTPException(400,"Los tiempos deben estar dentro de la duración del audio ("+str(round(duration,2))+" s).")
-        async with httpx.AsyncClient(timeout=180) as c:
-            r=await c.post(API+"/text-to-speech/"+voice_id,headers={"xi-api-key":k,"Accept":"audio/mpeg"},params={"output_format":"mp3_44100_128"},json={"text":replacement_text,"model_id":"eleven_multilingual_v2","voice_settings":{"stability":0.5,"similarity_boost":0.75}})
-        if r.is_error: raise upstream(r)
+        async with httpx.AsyncClient(timeout=240) as c:
+            r = await c.post(
+                FISH_API + "/v1/tts",
+                headers={
+                    "Authorization": "Bearer " + k,
+                    "Accept": "audio/mpeg",
+                    "Content-Type": "application/json",
+                    "model": "s2.1-pro-free",
+                },
+                json={"text": replacement_text, "format": "mp3", "reference_id": voice_id},
+            )
+        if r.is_error:
+            raise upstream(r)
         generated=d/"replacement.mp3"; generated.write_bytes(r.content); rep=d/"rep.wav"
         ffmpeg(["-i",str(generated),"-ac","2","-ar","44100","-acodec","pcm_s16le",str(rep)])
         probe=subprocess.run(["ffprobe","-v","error","-show_entries","format=duration","-of","default=noprint_wrappers=1:nokey=1",str(rep)],capture_output=True,text=True,timeout=30)
