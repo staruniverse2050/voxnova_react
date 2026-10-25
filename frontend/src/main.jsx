@@ -18,7 +18,8 @@ function readableError(value) {
 
 function App() {
   const [mode,setMode] = useState('replace');
-  const [voices,setVoices] = useState([]);
+  const [customVoices,setCustomVoices] = useState(()=>{ try { return JSON.parse(localStorage.getItem('voxnova_custom_voices') || '[]'); } catch { return []; } });
+  const [voices,setVoices] = useState(()=>{ try { return JSON.parse(localStorage.getItem('voxnova_custom_voices') || '[]'); } catch { return []; } });
   const [voice,setVoice] = useState('');
   const [file,setFile] = useState(null);
   const [name,setName] = useState('Mi voz');
@@ -42,7 +43,8 @@ function App() {
       const data = await r.json();
       if (!r.ok) throw new Error(readableError(data.detail || data.message || 'No se pudieron cargar las voces'));
       const list = data.voices || [];
-      setVoices(list);
+      const combined = [...customVoices, ...list.filter(v => !customVoices.some(cv => cv.voice_id === v.voice_id))];
+      setVoices(combined);
       if (preferredVoiceId && list.some(v => v.voice_id === preferredVoiceId)) {
         setVoice(preferredVoiceId);
       } else if (!voice && list.length) {
@@ -87,14 +89,15 @@ function App() {
         const data = await response.json();
         const clonedName = data.name || name;
         const clonedVoiceId = data.voice_id || data.voice?.voice_id || '';
-        const list = await loadVoices(clonedVoiceId);
+        if (!clonedVoiceId) throw new Error('La voz se creó, pero el servidor no devolvió su identificador.');
+        const savedVoice = {voice_id:clonedVoiceId, name:clonedName, category:'Voz clonada', provider:data.provider || 'JSF Labs'};
+        const updated = [savedVoice, ...customVoices.filter(v => v.voice_id !== clonedVoiceId)];
+        setCustomVoices(updated);
+        setVoices(prev => [savedVoice, ...prev.filter(v => v.voice_id !== clonedVoiceId)]);
+        localStorage.setItem('voxnova_custom_voices', JSON.stringify(updated));
+        setVoice(clonedVoiceId);
         setMode('speech');
-        if (clonedVoiceId && list.some(v => v.voice_id === clonedVoiceId)) {
-          setVoice(clonedVoiceId);
-          setMessage('¡Voz "' + clonedName + '" guardada! Ya puedes escribir tu texto en Texto a voz y generar el audio con esa voz.');
-        } else {
-          setMessage('ElevenLabs aceptó la creación de "' + clonedName + '", pero no pudimos actualizar la lista de voces. Recarga la página y revisa Texto a voz.');
-        }
+        setMessage('¡Voz "' + clonedName + '" guardada en este navegador! Ya puedes escribir tu texto en Texto a voz y generar el audio con esa voz.');
       } else {
         const blob=await response.blob(); setAudioUrl(URL.createObjectURL(blob)); setMessage('Audio procesado correctamente. Escúchalo y descarga el resultado.');
       }
@@ -121,7 +124,7 @@ function App() {
           {mode==='replace' && <div className="timings"><label className="field"><span>Inicio (segundos)</span><input type="number" min="0" step="0.1" value={start} onChange={e=>setStart(e.target.value)} required/></label><label className="field"><span>Fin (segundos)</span><input type="number" min="0.1" step="0.1" value={end} onChange={e=>setEnd(e.target.value)} required/></label></div>}
           {(mode==='speech'||mode==='replace') && <label className="field"><span>Voz que se utilizará</span><select value={voice} onChange={e=>setVoice(e.target.value)} required><option value="">Selecciona una voz</option>{voices.map(v=><option key={v.voice_id} value={v.voice_id}>{v.name} {v.category?'· '+v.category:''}</option>)}</select></label>}
           {mode!=='speech' && <label className="consent"><input type="checkbox" checked={consent} onChange={e=>setConsent(e.target.checked)}/><span>Confirmo que tengo autorización para usar esta grabación y la voz seleccionada.</span></label>}
-          {!apiReady && <div className="notice">El servidor está publicado, pero necesita la variable secreta <code>ELEVENLABS_API_KEY</code> en Render para activar el procesamiento.</div>}
+          {!apiReady && <div className="notice">Configura <code>JSF_LABS_API_KEY</code> en Render para clonar voces y generar texto con ellas. ElevenLabs es opcional para las otras funciones.</div>}
           {error && <div className="alert">{error}</div>}{message && <div className="success">{message}</div>}
           <button className="submit" disabled={busy || !apiReady}>{busy?<><LoaderCircle className="spin" size={18}/> Procesando audio…</>:<><WandSparkles size={18}/> {mode==='clone'?'Crear voz':mode==='speech'?'Generar audio':mode==='convert'?'Transformar voz':'Reemplazar fragmento'}</>}</button>
           {audioUrl && <div className="result"><b><AudioLines size={17}/> Resultado</b><audio controls src={audioUrl}/><a className="download" href={audioUrl} download={mode==='replace'?'audio-editado.mp3':mode==='convert'?'voz-transformada.mp3':'voz-generada.mp3'}><Download size={17}/> Descargar audio</a></div>}
