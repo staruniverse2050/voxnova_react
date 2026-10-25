@@ -18,8 +18,8 @@ function readableError(value) {
 
 function App() {
   const [mode,setMode] = useState('replace');
-  const [customVoices,setCustomVoices] = useState(()=>{ try { return JSON.parse(localStorage.getItem('voxnova_custom_voices') || '[]'); } catch { return []; } });
-  const [voices,setVoices] = useState(()=>{ try { return JSON.parse(localStorage.getItem('voxnova_custom_voices') || '[]'); } catch { return []; } });
+  const [customVoices,setCustomVoices] = useState(()=>{ try { return JSON.parse(localStorage.getItem('voxnova_fish_voices') || '[]'); } catch { return []; } });
+  const [voices,setVoices] = useState(()=>{ try { return JSON.parse(localStorage.getItem('voxnova_fish_voices') || '[]'); } catch { return []; } });
   const [voice,setVoice] = useState('');
   const [file,setFile] = useState(null);
   const [name,setName] = useState('Mi voz');
@@ -64,13 +64,13 @@ function App() {
   function saveImportedVoice() {
     const cleanName = importVoiceName.trim();
     const cleanId = importVoiceId.trim();
-    if (!cleanName || !cleanId) { setError('Escribe el nombre y el identificador de la voz guardada en Replicavox.'); return; }
-    if (!cleanId.startsWith('clone_')) { setError('El identificador de una voz clonada debe comenzar por clone_.'); return; }
-    const savedVoice = {voice_id:cleanId,name:cleanName,category:'Voz guardada en Replicavox',provider:'Replicavox'};
+    if (!cleanName || !cleanId) { setError('Escribe el nombre y el identificador de tu voz guardada en Fish Audio.'); return; }
+    
+    const savedVoice = {voice_id:cleanId,name:cleanName,category:'Voz guardada en Fish Audio',provider:'Fish Audio'};
     const updated = [savedVoice, ...customVoices.filter(v => v.voice_id !== cleanId)];
     setCustomVoices(updated);
     setVoices(prev => [savedVoice, ...prev.filter(v => v.voice_id !== cleanId)]);
-    localStorage.setItem('voxnova_custom_voices', JSON.stringify(updated));
+    localStorage.setItem('voxnova_fish_voices', JSON.stringify(updated));
     setVoice(cleanId);
     setImportVoiceName('');
     setImportVoiceId('');
@@ -108,11 +108,11 @@ function App() {
         const clonedName = data.name || name;
         const clonedVoiceId = data.voice_id || data.voice?.voice_id || '';
         if (!clonedVoiceId) throw new Error('La voz se creó, pero el servidor no devolvió su identificador.');
-        const savedVoice = {voice_id:clonedVoiceId, name:clonedName, category:'Voz clonada', provider:data.provider || 'Replicavox'};
+        const savedVoice = {voice_id:clonedVoiceId, name:clonedName, category:'Voz clonada', provider:data.provider || 'Fish Audio'};
         const updated = [savedVoice, ...customVoices.filter(v => v.voice_id !== clonedVoiceId)];
         setCustomVoices(updated);
         setVoices(prev => [savedVoice, ...prev.filter(v => v.voice_id !== clonedVoiceId)]);
-        localStorage.setItem('voxnova_custom_voices', JSON.stringify(updated));
+        localStorage.setItem('voxnova_fish_voices', JSON.stringify(updated));
         setVoice(clonedVoiceId);
         setMode('speech');
         setMessage('¡Voz "' + clonedName + '" guardada en este navegador! Ya puedes escribir tu texto en Texto a voz y generar el audio con esa voz.');
@@ -142,8 +142,8 @@ function App() {
           {mode==='replace' && <div className="timings"><label className="field"><span>Inicio (segundos)</span><input type="number" min="0" step="0.1" value={start} onChange={e=>setStart(e.target.value)} required/></label><label className="field"><span>Fin (segundos)</span><input type="number" min="0.1" step="0.1" value={end} onChange={e=>setEnd(e.target.value)} required/></label></div>}
           {(mode==='speech'||mode==='replace') && <label className="field"><span>Voz que se utilizará</span><select value={voice} onChange={e=>setVoice(e.target.value)} required><option value="">Selecciona una voz</option>{voices.map(v=><option key={v.voice_id} value={v.voice_id}>{v.name} {v.category?'· '+v.category:''}</option>)}</select></label>}
           {mode!=='speech' && <label className="consent"><input type="checkbox" checked={consent} onChange={e=>setConsent(e.target.checked)}/><span>Confirmo que tengo autorización para usar esta grabación y la voz seleccionada.</span></label>}
-          {mode==='speech' && <div className="notice"><b>¿Ya guardaste una voz en Replicavox?</b><p>Las voces de tu cuenta se cargan automáticamente. Si necesitas importar una, pega su identificador clone_…</p><label className="field"><span>Nombre de la voz guardada</span><input value={importVoiceName} onChange={e=>setImportVoiceName(e.target.value)} placeholder="Ej. David"/></label><label className="field"><span>Identificador de voz de Replicavox (clone_...)</span><input value={importVoiceId} onChange={e=>setImportVoiceId(e.target.value)} placeholder="clone_..." /></label><button type="button" className="download" onClick={saveImportedVoice}>Guardar voz en VoxNova</button></div>}
-          {!apiReady && <div className="notice">Configura <code>REPLICAVOX_API_KEY</code> en Render con tu llave API de Replicavox para generar texto a voz.</div>}
+          {mode==='speech' && <div className="notice"><b>¿Ya tienes una voz guardada en Fish Audio?</b><p>Las voces de tu cuenta se cargan automáticamente. También puedes importar un ID de modelo de voz.</p><label className="field"><span>Nombre de la voz guardada</span><input value={importVoiceName} onChange={e=>setImportVoiceName(e.target.value)} placeholder="Ej. David"/></label><label className="field"><span>Identificador del modelo de voz de Fish Audio</span><input value={importVoiceId} onChange={e=>setImportVoiceId(e.target.value)} placeholder="ID del modelo" /></label><button type="button" className="download" onClick={saveImportedVoice}>Guardar voz en VoxNova</button></div>}
+          {!apiReady && <div className="notice">Configura <code>FISH_API_KEY</code> en Render con tu llave API de Fish Audio para generar texto a voz.</div>}
           {error && <div className="alert">{error}</div>}{message && <div className="success">{message}</div>}
           <button className="submit" disabled={busy || !apiReady}>{busy?<><LoaderCircle className="spin" size={18}/> Procesando audio…</>:<><WandSparkles size={18}/> {mode==='clone'?'Crear voz':mode==='speech'?'Generar audio':mode==='convert'?'Transformar voz':'Reemplazar fragmento'}</>}</button>
           {audioUrl && <div className="result"><b><AudioLines size={17}/> Resultado</b><audio controls src={audioUrl}/><a className="download" href={audioUrl} download={mode==='replace'?'audio-editado.mp3':mode==='convert'?'voz-transformada.mp3':'voz-generada.mp3'}><Download size={17}/> Descargar audio</a></div>}
