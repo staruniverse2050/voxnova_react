@@ -24,6 +24,7 @@ function App() {
   const [file,setFile] = useState(null);
   const [name,setName] = useState('Mi voz');
   const [text,setText] = useState('');
+  const [referenceText,setReferenceText] = useState('');
   const [start,setStart] = useState('0');
   const [end,setEnd] = useState('3');
   const [consent,setConsent] = useState(false);
@@ -66,7 +67,19 @@ function App() {
     try {
       let response;
       if(mode === 'speech') {
-        response = await fetch('/api/speech',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({voice_id:voice,text})});
+        if (file) {
+          if (!consent) throw new Error('Confirma que tienes permiso para utilizar esta voz y grabación.');
+          if (!referenceText.trim()) throw new Error('Escribe exactamente lo que se dice en el audio de referencia.');
+          const form = new FormData();
+          form.append('file', file);
+          form.append('text', text);
+          form.append('reference_text', referenceText);
+          form.append('consent_confirmed', 'true');
+          response = await fetch('/api/instant-speech', {method:'POST', body:form});
+        } else {
+          if (!voice) throw new Error('Selecciona una voz guardada o sube un audio de referencia para clonar la voz sin crear un modelo.');
+          response = await fetch('/api/speech',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({voice_id:voice,text})});
+        }
       } else {
         if(!file) throw new Error('Primero selecciona un archivo de audio.');
         if(!consent) throw new Error('Confirma que tienes permiso para utilizar esta voz y grabación.');
@@ -127,12 +140,14 @@ function App() {
         <form onSubmit={run} className="panel">
           <div className="panelhead"><div><span className="step">01</span><h2>{modes.find(m=>m.id===mode)?.label}</h2></div><span className="secure"><ShieldCheck size={15}/> Procesamiento seguro</span></div>
           {mode !== 'speech' && <label className="field"><span>Archivo de audio</span><label className="drop"><Upload size={22}/><b>{file?file.name:'Selecciona o arrastra un audio'}</b><small>MP3, WAV, M4A, OGG · Máximo 40 MB</small><input type="file" accept="audio/*,.mp3,.wav,.m4a,.ogg,.opus" onChange={selectFile}/></label></label>}
+          {mode === 'speech' && <div className="notice"><b>¿Quieres usar una voz de referencia sin crear un modelo?</b><p>Sube una grabación limpia de la voz. No se guardará como modelo; se usará solo para esta generación. Si no subes audio, puedes elegir una voz que ya tengas guardada.</p><label className="drop"><Upload size={22}/><b>{file?file.name:'Subir audio de referencia (opcional)'}</b><small>MP3, WAV, M4A u OGG · Máximo 40 MB</small><input type="file" accept="audio/*,.mp3,.wav,.m4a,.ogg,.opus" onChange={selectFile}/></label></div>}
+          {mode === 'speech' && file && <label className="field"><span>¿Qué dice exactamente el audio de referencia?</span><textarea value={referenceText} onChange={e=>setReferenceText(e.target.value)} required rows={2} placeholder="Escribe la transcripción del audio de referencia…"/></label>}
           {mode === 'clone' && <label className="field"><span>Nombre para esta voz</span><input value={name} onChange={e=>setName(e.target.value)} required placeholder="Ej. Mi voz"/></label>}
           {mode !== 'clone' && <label className="field"><span>{mode==='speech'?'Texto que dirá la voz':mode==='replace'?'Nueva frase para el fragmento':'Voz de destino'}</span>{mode==='speech'||mode==='replace'?<textarea value={text} onChange={e=>setText(e.target.value)} required rows={4} placeholder={mode==='speech'?'Escribe aquí lo que quieres que diga la voz…':'Escribe la frase que reemplazará el fragmento…'}/>:<select value={voice} onChange={e=>setVoice(e.target.value)} required><option value="">Selecciona una voz</option>{voices.map(v=><option key={v.voice_id} value={v.voice_id}>{v.name} {v.category?'· '+v.category:''}</option>)}</select>}</label>}
           {mode==='replace' && <div className="timings"><label className="field"><span>Inicio (segundos)</span><input type="number" min="0" step="0.1" value={start} onChange={e=>setStart(e.target.value)} required/></label><label className="field"><span>Fin (segundos)</span><input type="number" min="0.1" step="0.1" value={end} onChange={e=>setEnd(e.target.value)} required/></label></div>}
-          {(mode==='speech'||mode==='replace') && <label className="field"><span>Voz que se utilizará</span><select value={voice} onChange={e=>setVoice(e.target.value)} required><option value="">Selecciona una voz</option>{voices.map(v=><option key={v.voice_id} value={v.voice_id}>{v.name} {v.category?'· '+v.category:''}</option>)}</select></label>}
-          {mode!=='speech' && <label className="consent"><input type="checkbox" checked={consent} onChange={e=>setConsent(e.target.checked)}/><span>Confirmo que tengo autorización para usar esta grabación y la voz seleccionada.</span></label>}
-          {mode==='speech' && voices.length===0 && <div className="notice"><b>Todavía no hay voces disponibles</b><p>Primero crea una voz en la sección “Clonar una voz”. Cuando se guarde correctamente, aparecerá aquí para generar audio.</p><button type="button" className="download" onClick={()=>loadVoices()}>Actualizar lista de voces</button></div>}
+          {(mode==='replace'||(mode==='speech'&&!file)) && <label className="field"><span>{mode==='speech'?'Voz guardada (si no subes audio de referencia)':'Voz que se utilizará'}</span><select value={voice} onChange={e=>setVoice(e.target.value)} required={mode==='replace'||(mode==='speech'&&!file)}><option value="">Selecciona una voz</option>{voices.map(v=><option key={v.voice_id} value={v.voice_id}>{v.name} {v.category?'· '+v.category:''}</option>)}</select></label>}
+          {(mode!=='speech'||(mode==='speech'&&file)) && <label className="consent"><input type="checkbox" checked={consent} onChange={e=>setConsent(e.target.checked)}/><span>Confirmo que tengo autorización para usar esta grabación y la voz seleccionada.</span></label>}
+          {mode==='speech' && voices.length===0 && !file && <div className="notice"><b>No hay voces guardadas todavía</b><p>Puedes subir un audio de referencia arriba para generar voz sin crear un modelo y evitar el límite de creación de Fish Audio.</p><button type="button" className="download" onClick={()=>loadVoices()}>Actualizar lista de voces</button></div>}
           {!apiReady && <div className="notice">Configura <code>FISH_API_KEY</code> en Render con tu llave API de Fish Audio para clonar voces, generar texto a voz y reemplazar fragmentos.</div>}
           {mode==='convert' && !elevenLabsReady && <div className="notice">La función Cambiar mi voz usa ElevenLabs y requiere <code>ELEVENLABS_API_KEY</code> en Render. Las otras funciones principales usan Fish Audio.</div>}
           {error && <div className="alert">{error}</div>}{message && <div className="success">{message}</div>}
