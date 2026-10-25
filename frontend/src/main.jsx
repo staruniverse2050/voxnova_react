@@ -34,12 +34,14 @@ function App() {
   const [message,setMessage] = useState('');
   const [audioUrl,setAudioUrl] = useState('');
   const [apiReady,setApiReady] = useState(false);
+  const [elevenLabsReady,setElevenLabsReady] = useState(false);
 
   async function loadVoices(preferredVoiceId = '') {
     try {
       const h = await fetch('/health');
       const health = await h.json();
       setApiReady(!!health.provider_configured);
+      setElevenLabsReady(!!health.elevenlabs_configured);
       if (!health.provider_configured) return [];
       const r = await fetch('/api/voices');
       const data = await r.json();
@@ -149,9 +151,10 @@ function App() {
           {(mode==='speech'||mode==='replace') && <label className="field"><span>Voz que se utilizará</span><select value={voice} onChange={e=>setVoice(e.target.value)} required><option value="">Selecciona una voz</option>{voices.map(v=><option key={v.voice_id} value={v.voice_id}>{v.name} {v.category?'· '+v.category:''}</option>)}</select></label>}
           {mode!=='speech' && <label className="consent"><input type="checkbox" checked={consent} onChange={e=>setConsent(e.target.checked)}/><span>Confirmo que tengo autorización para usar esta grabación y la voz seleccionada.</span></label>}
           {mode==='speech' && <div className="notice"><b>¿Ya tienes una voz guardada en Fish Audio?</b><p>Las voces de tu cuenta se cargan automáticamente. También puedes importar un ID de modelo de voz.</p><label className="field"><span>Nombre de la voz guardada</span><input value={importVoiceName} onChange={e=>setImportVoiceName(e.target.value)} placeholder="Ej. David"/></label><label className="field"><span>Identificador del modelo de voz de Fish Audio</span><input value={importVoiceId} onChange={e=>setImportVoiceId(e.target.value)} placeholder="ID del modelo" /></label><button type="button" className="download" onClick={saveImportedVoice}>Guardar voz en VoxNova</button></div>}
-          {!apiReady && <div className="notice">Configura <code>FISH_API_KEY</code> en Render con tu llave API de Fish Audio para generar texto a voz.</div>}
+          {!apiReady && <div className="notice">Configura <code>FISH_API_KEY</code> en Render con tu llave API de Fish Audio para clonar voces, generar texto a voz y reemplazar fragmentos.</div>}
+          {mode==='convert' && !elevenLabsReady && <div className="notice">La función Cambiar mi voz usa ElevenLabs y requiere <code>ELEVENLABS_API_KEY</code> en Render. Las otras funciones principales usan Fish Audio.</div>}
           {error && <div className="alert">{error}</div>}{message && <div className="success">{message}</div>}
-          <button className="submit" disabled={busy || !apiReady}>{busy?<><LoaderCircle className="spin" size={18}/> Procesando audio…</>:<><WandSparkles size={18}/> {mode==='clone'?'Crear voz':mode==='speech'?'Generar audio':mode==='convert'?'Transformar voz':'Reemplazar fragmento'}</>}</button>
+          <button className="submit" disabled={busy || !apiReady || (mode==='convert' && !elevenLabsReady)}>{busy?<><LoaderCircle className="spin" size={18}/> Procesando audio…</>:<><WandSparkles size={18}/> {mode==='clone'?'Crear voz':mode==='speech'?'Generar audio':mode==='convert'?'Transformar voz':'Reemplazar fragmento'}</>}</button>
           {audioUrl && <div className="result"><b><AudioLines size={17}/> Resultado</b><audio controls src={audioUrl}/><a className="download" href={audioUrl} download={mode==='replace'?'audio-editado.mp3':mode==='convert'?'voz-transformada.mp3':'voz-generada.mp3'}><Download size={17}/> Descargar audio</a></div>}
         </form>
       </section>
