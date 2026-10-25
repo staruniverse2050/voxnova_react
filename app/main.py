@@ -109,7 +109,7 @@ async def voices():
 @app.post("/api/speech")
 async def speech(body:SpeechRequest):
     k=fish_key()
-    payload={"text": body.text.strip(), "format":"mp3"}
+    payload={"text": body.text.strip(), "format":"mp3", "language":"es"}
     if body.voice_id:
         payload["reference_id"]=body.voice_id
     async with httpx.AsyncClient(timeout=240) as client:
@@ -137,10 +137,9 @@ async def instant_speech(
     payload = {
         "text": text.strip(),
         "format": "mp3",
+        "language": "es",
         "references": [{"audio": audio, "text": reference_text.strip()}],
-        "normalize": True,
-        "prosody": {"speed": 1.0, "volume": 0},
-        "temperature": 0.7,
+        "temperature": 0.4,
         "top_p": 0.7,
         "chunk_length": 200,
     }
