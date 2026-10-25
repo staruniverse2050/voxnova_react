@@ -64,9 +64,9 @@ function App() {
   function saveImportedVoice() {
     const cleanName = importVoiceName.trim();
     const cleanId = importVoiceId.trim();
-    if (!cleanName || !cleanId) { setError('Escribe el nombre y el identificador de la voz guardada en JSF Labs.'); return; }
-    if (!cleanId.startsWith('jsf_')) { setError('El identificador de JSF Labs debe comenzar por jsf_.'); return; }
-    const savedVoice = {voice_id:cleanId,name:cleanName,category:'Voz guardada en JSF Labs',provider:'JSF Labs'};
+    if (!cleanName || !cleanId) { setError('Escribe el nombre y el identificador de la voz guardada en Replicavox.'); return; }
+    if (!cleanId.startsWith('clone_')) { setError('El identificador de una voz clonada debe comenzar por clone_.'); return; }
+    const savedVoice = {voice_id:cleanId,name:cleanName,category:'Voz guardada en Replicavox',provider:'Replicavox'};
     const updated = [savedVoice, ...customVoices.filter(v => v.voice_id !== cleanId)];
     setCustomVoices(updated);
     setVoices(prev => [savedVoice, ...prev.filter(v => v.voice_id !== cleanId)]);
@@ -108,7 +108,7 @@ function App() {
         const clonedName = data.name || name;
         const clonedVoiceId = data.voice_id || data.voice?.voice_id || '';
         if (!clonedVoiceId) throw new Error('La voz se creó, pero el servidor no devolvió su identificador.');
-        const savedVoice = {voice_id:clonedVoiceId, name:clonedName, category:'Voz clonada', provider:data.provider || 'JSF Labs'};
+        const savedVoice = {voice_id:clonedVoiceId, name:clonedName, category:'Voz clonada', provider:data.provider || 'Replicavox'};
         const updated = [savedVoice, ...customVoices.filter(v => v.voice_id !== clonedVoiceId)];
         setCustomVoices(updated);
         setVoices(prev => [savedVoice, ...prev.filter(v => v.voice_id !== clonedVoiceId)]);
@@ -142,7 +142,7 @@ function App() {
           {mode==='replace' && <div className="timings"><label className="field"><span>Inicio (segundos)</span><input type="number" min="0" step="0.1" value={start} onChange={e=>setStart(e.target.value)} required/></label><label className="field"><span>Fin (segundos)</span><input type="number" min="0.1" step="0.1" value={end} onChange={e=>setEnd(e.target.value)} required/></label></div>}
           {(mode==='speech'||mode==='replace') && <label className="field"><span>Voz que se utilizará</span><select value={voice} onChange={e=>setVoice(e.target.value)} required><option value="">Selecciona una voz</option>{voices.map(v=><option key={v.voice_id} value={v.voice_id}>{v.name} {v.category?'· '+v.category:''}</option>)}</select></label>}
           {mode!=='speech' && <label className="consent"><input type="checkbox" checked={consent} onChange={e=>setConsent(e.target.checked)}/><span>Confirmo que tengo autorización para usar esta grabación y la voz seleccionada.</span></label>}
-          {mode==='speech' && <div className="notice"><b>¿Ya guardaste una voz en JSF Labs?</b><p>Importa aquí el nombre y el identificador de esa voz una sola vez para que aparezca en tu lista.</p><label className="field"><span>Nombre de la voz guardada</span><input value={importVoiceName} onChange={e=>setImportVoiceName(e.target.value)} placeholder="Ej. David"/></label><label className="field"><span>Identificador de voz de JSF Labs (jsf_...)</span><input value={importVoiceId} onChange={e=>setImportVoiceId(e.target.value)} placeholder="jsf_..." /></label><button type="button" className="download" onClick={saveImportedVoice}>Guardar voz en VoxNova</button></div>}
+          {mode==='speech' && <div className="notice"><b>¿Ya guardaste una voz en Replicavox?</b><p>Las voces de tu cuenta se cargan automáticamente. Si necesitas importar una, pega su identificador clone_…</p><label className="field"><span>Nombre de la voz guardada</span><input value={importVoiceName} onChange={e=>setImportVoiceName(e.target.value)} placeholder="Ej. David"/></label><label className="field"><span>Identificador de voz de Replicavox (clone_...)</span><input value={importVoiceId} onChange={e=>setImportVoiceId(e.target.value)} placeholder="clone_..." /></label><button type="button" className="download" onClick={saveImportedVoice}>Guardar voz en VoxNova</button></div>}
           {!apiReady && <div className="notice">Configura <code>JSF_LABS_API_KEY</code> en Render con tu llave API de JSF Labs para generar texto a voz.</div>}
           {error && <div className="alert">{error}</div>}{message && <div className="success">{message}</div>}
           <button className="submit" disabled={busy || !apiReady}>{busy?<><LoaderCircle className="spin" size={18}/> Procesando audio…</>:<><WandSparkles size={18}/> {mode==='clone'?'Crear voz':mode==='speech'?'Generar audio':mode==='convert'?'Transformar voz':'Reemplazar fragmento'}</>}</button>
