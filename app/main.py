@@ -56,7 +56,7 @@ async def post_audio(url, headers, **kwargs):
     return Response(r.content,media_type="audio/mpeg",headers={"Content-Disposition":'attachment; filename="voxnova-audio.mp3"',"Cache-Control":"no-store"})
 
 @app.get("/health")
-def health(): return {"status":"ok","provider_configured":bool(API_KEY or JSF_API_KEY),"elevenlabs_configured":bool(API_KEY),"jsf_configured":bool(JSF_API_KEY)}
+def health(): return {"status":"ok","provider_configured":bool(JSF_API_KEY),"elevenlabs_configured":bool(API_KEY),"jsf_configured":bool(JSF_API_KEY)}
 
 @app.get("/api/voices")
 async def voices():
