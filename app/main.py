@@ -43,14 +43,20 @@ async def read_file(file: UploadFile):
     return data
 
 def upstream(r):
+    """Convert provider errors into useful, safe API responses."""
     try:
-        j=r.json()
-        detail=j.get("detail",j.get("message",j.get("error",j)))
-        if isinstance(detail,dict):
-            detail=detail.get("message",detail.get("detail",detail))
-    except Exception: detail=r.text[:800]
-    status=r.status_code if 400<=r.status_code<500 else 502
-    return HTTPException(status, detail={"provider":"voice API","message":detail})
+        payload = r.json()
+        if isinstance(payload, dict):
+            detail = payload.get("detail") or payload.get("message") or payload.get("error") or payload
+        else:
+            detail = payload
+        if isinstance(detail, dict):
+            detail = detail.get("message") or detail.get("detail") or str(detail)
+    except Exception:
+        detail = (r.text or "El proveedor devolvió una respuesta no legible.")[:1200]
+    # Preserve actionable client errors; map provider-side failures to 502.
+    status = r.status_code if 400 <= r.status_code < 500 else 502
+    return HTTPException(status, detail={"provider": "Fish Audio", "status": r.status_code, "message": str(detail)})
 
 async def post_audio(url, headers, **kwargs):
     async with httpx.AsyncClient(timeout=180) as client:
@@ -66,23 +72,38 @@ async def voices():
     k=fish_key()
     headers={"Authorization":"Bearer "+k,"Accept":"application/json"}
     async with httpx.AsyncClient(timeout=60) as client:
-        r=await client.get(FISH_API+"/model",headers=headers)
-    if r.is_error: raise upstream(r)
-    payload=r.json()
-    if isinstance(payload,list):
-        items=payload
-    elif isinstance(payload,dict):
-        items=payload.get("data") or payload.get("items") or payload.get("models") or payload.get("results") or []
+        r = await client.get(
+            FISH_API + "/model",
+            headers=headers,
+            params={"self": "true", "page_size": 100, "page_number": 1},
+        )
+    if r.is_error:
+        raise upstream(r)
+    try:
+        payload = r.json()
+    except Exception:
+        raise HTTPException(502, "Fish Audio devolvió una respuesta que no es JSON al consultar tus voces.")
+    if isinstance(payload, list):
+        items = payload
+    elif isinstance(payload, dict):
+        items = payload.get("items") or payload.get("data") or payload.get("models") or payload.get("results") or []
     else:
-        items=[]
-    result=[]
+        items = []
+    result = []
     for v in items:
-        if not isinstance(v,dict): continue
-        voice_id=v.get("id") or v.get("_id") or v.get("model_id")
-        state=v.get("state","trained")
-        if voice_id and state not in ("failed","training","created"):
-            result.append({"voice_id":voice_id,"name":v.get("title") or v.get("name") or voice_id,"category":"Voz de Fish Audio","provider":"Fish Audio"})
-    return {"voices":result}
+        if not isinstance(v, dict):
+            continue
+        voice_id = v.get("id") or v.get("_id") or v.get("model_id")
+        state = str(v.get("state", "trained")).lower()
+        if voice_id and state not in ("failed", "training"):
+            result.append({
+                "voice_id": str(voice_id),
+                "name": v.get("title") or v.get("name") or str(voice_id),
+                "category": "Voz de Fish Audio",
+                "provider": "Fish Audio",
+                "status": state,
+            })
+    return {"voices": result}
 
 @app.post("/api/speech")
 async def speech(body:SpeechRequest):
@@ -106,18 +127,53 @@ async def clone(name:Annotated[str,Form(min_length=1,max_length=80)],consent_con
     validate(file)
     data=await read_file(file)
     headers={"Authorization":"Bearer "+k,"Accept":"application/json"}
-    async with httpx.AsyncClient(timeout=240) as client:
-        r=await client.post(
-            FISH_API+"/model",
-            headers=headers,
-            data=[("title",name.strip()),("type","tts"),("train_mode","fast"),("visibility","private"),("description","Voz creada desde VoxNova AI")],
-            files=[("voices",(file.filename or "voice-sample",data,file.content_type or "application/octet-stream"))]
-        )
-    if r.is_error: raise upstream(r)
-    payload=r.json()
-    voice_id=payload.get("id") or payload.get("_id") or payload.get("model_id")
-    if not voice_id: raise HTTPException(502,"Fish Audio no devolvió el identificador del modelo de voz.")
-    return {"voice_id":voice_id,"name":payload.get("title") or name.strip(),"provider":"Fish Audio","language":"multilingual","status":payload.get("state","created")}
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(240, connect=30)) as client:
+            r = await client.post(
+                FISH_API + "/model",
+                headers=headers,
+                data={
+                    "title": name.strip(),
+                    "type": "tts",
+                    "train_mode": "fast",
+                    "visibility": "private",
+                    "description": "Voz creada desde VoxNova AI",
+                },
+                files=[
+                    ("voices", (
+                        file.filename or "voice-sample.wav",
+                        data,
+                        file.content_type or "application/octet-stream",
+                    ))
+                ],
+            )
+    except httpx.TimeoutException:
+        raise HTTPException(504, "Fish Audio tardó demasiado en crear la voz. Prueba con un audio más corto.")
+    except httpx.RequestError as exc:
+        print(f"Fish Audio clone connection error: {type(exc).__name__}: {exc}", flush=True)
+        raise HTTPException(502, "VoxNova no pudo conectarse con Fish Audio. Revisa la llave API y vuelve a intentarlo.")
+    if r.is_error:
+        raise upstream(r)
+    try:
+        payload = r.json()
+    except Exception:
+        print(f"Fish Audio clone returned non-JSON HTTP {r.status_code}: {(r.text or '')[:500]}", flush=True)
+        raise HTTPException(502, "Fish Audio respondió de forma inesperada al crear la voz. Revisa los Logs de Render.")
+    if not isinstance(payload, dict):
+        print(f"Fish Audio clone returned unexpected payload type: {type(payload).__name__}", flush=True)
+        raise HTTPException(502, "Fish Audio no devolvió los datos esperados de la voz.")
+    voice_id = payload.get("id") or payload.get("_id") or payload.get("model_id")
+    if not voice_id:
+        detail = payload.get("message") or payload.get("detail") or payload.get("error")
+        print(f"Fish Audio clone response missing model ID: {str(detail or payload)[:500]}", flush=True)
+        raise HTTPException(502, detail or "Fish Audio no devolvió el identificador del modelo de voz.")
+    return {
+        "voice_id": str(voice_id),
+        "name": payload.get("title") or name.strip(),
+        "provider": "Fish Audio",
+        "language": "multilingual",
+        "status": payload.get("state", "created"),
+    }
 
 @app.post("/api/convert-voice")
 async def convert(voice_id:Annotated[str,Form(min_length=3,max_length=128)],consent_confirmed:Annotated[bool,Form()],file:Annotated[UploadFile,File()]):
