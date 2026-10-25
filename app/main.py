@@ -94,7 +94,7 @@ async def replace(voice_id:Annotated[str,Form(min_length=3,max_length=128)],star
     validate(file); raw=await read_file(file)
     with tempfile.TemporaryDirectory(prefix="voxnova-") as td:
         d=Path(td); src=d/"src"; src.write_bytes(raw); original=d/"original.wav"
-        ffmpeg(["-i",str(src),"-vn","-acodec","pcm_s16le",str(original)])
+        ffmpeg(["-i",str(src),"-vn","-ac","2","-ar","44100","-acodec","pcm_s16le",str(original)])
         p=subprocess.run(["ffprobe","-v","error","-show_entries","format=duration","-of","default=noprint_wrappers=1:nokey=1",str(original)],capture_output=True,text=True,timeout=30)
         try: duration=float(p.stdout.strip())
         except ValueError: raise HTTPException(422,"No se pudo leer la duración del audio.")
