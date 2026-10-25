@@ -253,7 +253,7 @@ async def replace(voice_id:Annotated[str,Form(min_length=3,max_length=128)],star
                     "Content-Type": "application/json",
                     "model": "s2.1-pro-free",
                 },
-                json={"text": replacement_text.strip(), "format": "mp3", "reference_id": voice_id, "language": "es"},
+                json={"text": replacement_text.strip(), "format": "mp3", "reference_id": voice_id},
             )
         if r.is_error:
             raise upstream(r)
