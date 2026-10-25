@@ -3,6 +3,19 @@ import { createRoot } from 'react-dom/client';
 import { AudioLines, Mic, Scissors, WandSparkles, Upload, Download, RefreshCw, ShieldCheck, LoaderCircle } from 'lucide-react';
 import './style.css';
 
+function readableError(value) {
+  if (typeof value === 'string') return value;
+  if (value == null) return 'Ocurrió un error inesperado.';
+  if (Array.isArray(value)) return value.map(readableError).filter(Boolean).join(' · ');
+  if (typeof value === 'object') {
+    if (value.message) return readableError(value.message);
+    if (value.detail) return readableError(value.detail);
+    if (value.error) return readableError(value.error);
+    return Object.entries(value).map(([key, item]) => key + ': ' + readableError(item)).join(' · ');
+  }
+  return String(value);
+}
+
 function App() {
   const [mode,setMode] = useState('replace');
   const [voices,setVoices] = useState([]);
@@ -19,14 +32,27 @@ function App() {
   const [audioUrl,setAudioUrl] = useState('');
   const [apiReady,setApiReady] = useState(false);
 
-  async function loadVoices() {
+  async function loadVoices(preferredVoiceId = '') {
     try {
-      const h = await fetch('/health'); const health = await h.json(); setApiReady(!!health.provider_configured);
-      if (!health.provider_configured) return;
-      const r = await fetch('/api/voices'); const data = await r.json();
-      if (!r.ok) throw new Error(data.detail?.message || data.detail || 'No se pudieron cargar las voces');
-      setVoices(data.voices || []); if (!voice && data.voices?.length) setVoice(data.voices[0].voice_id);
-    } catch(e) { setError(String(e.message || e)); }
+      const h = await fetch('/health');
+      const health = await h.json();
+      setApiReady(!!health.provider_configured);
+      if (!health.provider_configured) return [];
+      const r = await fetch('/api/voices');
+      const data = await r.json();
+      if (!r.ok) throw new Error(readableError(data.detail || data.message || 'No se pudieron cargar las voces'));
+      const list = data.voices || [];
+      setVoices(list);
+      if (preferredVoiceId && list.some(v => v.voice_id === preferredVoiceId)) {
+        setVoice(preferredVoiceId);
+      } else if (!voice && list.length) {
+        setVoice(list[0].voice_id);
+      }
+      return list;
+    } catch(e) {
+      setError(readableError(e?.message || e));
+      return [];
+    }
   }
   useEffect(()=>{ loadVoices(); },[]);
   useEffect(()=>()=>{ if(audioUrl) URL.revokeObjectURL(audioUrl); },[audioUrl]);
@@ -50,16 +76,29 @@ function App() {
       }
       if(!response) throw new Error('Selecciona una operación válida.');
       if(!response.ok) {
-        let detail = 'No se pudo procesar el audio.';
-        try { const d=await response.json(); detail=typeof d.detail==='string'?d.detail:(d.detail?.message || JSON.stringify(d.detail || d)); } catch {}
+        let detail = 'No se pudo completar esta acción. Vuelve a intentarlo.';
+        try {
+          const d = await response.json();
+          detail = readableError(d.detail || d.message || d.error || d);
+        } catch {}
         throw new Error(detail);
       }
       if(mode === 'clone') {
-        const data = await response.json(); setMessage('Voz creada correctamente: '+(data.name || name)+'. Actualizando lista…'); await loadVoices();
+        const data = await response.json();
+        const clonedName = data.name || name;
+        const clonedVoiceId = data.voice_id || data.voice?.voice_id || '';
+        const list = await loadVoices(clonedVoiceId);
+        setMode('speech');
+        if (clonedVoiceId && list.some(v => v.voice_id === clonedVoiceId)) {
+          setVoice(clonedVoiceId);
+          setMessage('¡Voz "' + clonedName + '" guardada! Ya puedes escribir tu texto en Texto a voz y generar el audio con esa voz.');
+        } else {
+          setMessage('ElevenLabs aceptó la creación de "' + clonedName + '", pero no pudimos actualizar la lista de voces. Recarga la página y revisa Texto a voz.');
+        }
       } else {
         const blob=await response.blob(); setAudioUrl(URL.createObjectURL(blob)); setMessage('Audio procesado correctamente. Escúchalo y descarga el resultado.');
       }
-    } catch(e) { setError(String(e.message || e)); }
+    } catch(e) { setError(readableError(e?.message || e)); }
     finally { setBusy(false); }
   }
   const modes = [
