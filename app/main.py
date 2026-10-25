@@ -138,7 +138,9 @@ async def instant_speech(
         "text": text.strip(),
         "format": "mp3",
         "references": [{"audio": audio, "text": reference_text.strip()}],
-        "temperature": 0.4,
+        "normalize": True,
+        "prosody": {"speed": 1.0, "volume": 0},
+        "temperature": 0.7,
         "top_p": 0.7,
         "chunk_length": 200,
     }
